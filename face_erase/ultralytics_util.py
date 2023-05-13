@@ -5,12 +5,10 @@ import math
 import re
 import time
 
-import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torchvision
-from ultralytics.yolo.utils import LOGGER
 
 
 def box_iou(box1, box2, eps=1e-7):
