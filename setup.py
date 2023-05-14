@@ -6,8 +6,10 @@ setup(
         "face_erase",
     ],
     install_requires=[
-        "torch",
         "Pillow",
+        "torch",
+        "torchvision",
+        "tqdm",
     ],
     author="OpenAI",
 )
