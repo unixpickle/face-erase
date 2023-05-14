@@ -11,7 +11,7 @@ from typing import BinaryIO, List
 
 class ChildStream(ABC):
     @abstractmethod
-    def extra_files(self) -> List:
+    def pass_fds(self) -> List:
         pass
 
     @abstractmethod
@@ -25,6 +25,11 @@ class ChildStream(ABC):
     @abstractmethod
     def close(self):
         pass
+
+    @staticmethod
+    def create() -> "ChildStream":
+        # TODO: support pipes as well
+        return ChildSocketStream()
 
 
 class ChildSocketStream(ChildStream):
@@ -36,7 +41,7 @@ class ChildSocketStream(ChildStream):
         self.sock.listen(1)
         self._conn = None
 
-    def extra_files(self) -> List:
+    def pass_fds(self) -> List:
         return []
 
     def resource_url(self) -> str:
@@ -48,5 +53,6 @@ class ChildSocketStream(ChildStream):
         return self._conn.makefile("rwb")
 
     def close(self):
-        self._conn.close()
+        if self._conn is not None:
+            self._conn.close()
         self.sock.close()
