@@ -49,10 +49,16 @@ class ChildSocketStream(ChildStream):
 
     def connect(self) -> BinaryIO:
         conn, _ = self.sock.accept()
-        self._conn = conn
-        return self._conn.makefile("rwb")
+        self._conn = conn.makefile("rwb")
+        return self._conn
 
     def close(self):
         if self._conn is not None:
             self._conn.close()
-        self.sock.close()
+            self._conn = None
+        if self.sock is not None:
+            self.sock.close()
+            self.sock = None
+
+    def __del__(self):
+        self.close()
