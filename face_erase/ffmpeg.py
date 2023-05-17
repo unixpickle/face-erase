@@ -5,6 +5,7 @@ Read and write frames from videos.
 import io
 import re
 import subprocess
+from contextlib import contextmanager
 from dataclasses import dataclass
 from email.mime import audio
 from typing import Iterable, Iterator, Optional, Tuple
@@ -29,26 +30,20 @@ def read_frames(path: str, info: Optional[VideoInfo] = None) -> Iterator[np.ndar
     if info is None:
         info = video_info(path)
 
-    stream = ChildStream.create()
-    try:
-        args = [
-            "ffmpeg",
-            "-i",
-            path,
-            "-f",
-            "rawvideo",
-            "-pix_fmt",
-            "rgb24",
-            stream.resource_url(),
-        ]
-        proc = subprocess.Popen(
-            args,
+    with ChildStream.create() as stream:
+        with run_silent(
+            [
+                "ffmpeg",
+                "-i",
+                path,
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                stream.resource_url(),
+            ],
             pass_fds=stream.pass_fds(),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        try:
+        ):
             reader = stream.connect()
             frame_size = info.width * info.height * 3
             bufreader = io.BufferedReader(reader, buffer_size=frame_size)
@@ -59,13 +54,6 @@ def read_frames(path: str, info: Optional[VideoInfo] = None) -> Iterator[np.ndar
                 yield np.frombuffer(buf, dtype=np.uint8).reshape(
                     [info.height, info.width, 3]
                 )
-            proc.wait()
-        except:
-            proc.kill()
-            proc.wait()
-            raise
-    finally:
-        stream.close()
 
 
 def write_frames(
@@ -80,56 +68,50 @@ def write_frames(
     Copies audio from an existing file.
     """
     # Based on https://github.com/unixpickle/ffmpego/blob/6d92dd74560e18945db517a6b259ede1f2198391/video_writer.go
-    stream = ChildStream.create()
-    try:
-        args = [
-            "ffmpeg",
-            "-y",
-            # Video format
-            "-r",
-            f"{info.fps:f}",
-            "-s",
-            f"{info.width}x{info.height}",
-            "-pix_fmt",
-            "rgb24",
-            "-f",
-            "rawvideo",
-            "-probesize",
-            "32",
-            "-thread_queue_size",
-            "10000",
-            "-i",
-            stream.resource_url(),
-            # Add audio source
-            "-i",
-            audio_input_path,
-            "-c:a",
-            "copy",
-            "-map",
-            "0:v:0",
-            "-map",
-            "1:a:0?",
-            # Output parameters
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "18",
-            "-pix_fmt",
-            "yuv420p",
-            "-vf",
-            "pad=ceil(iw/2)*2:ceil(ih/2)*2",
-            output_path,
-        ]
-        proc = subprocess.Popen(
-            args,
+    with ChildStream.create() as stream:
+        with run_silent(
+            [
+                "ffmpeg",
+                "-y",
+                # Video format
+                "-r",
+                f"{info.fps:f}",
+                "-s",
+                f"{info.width}x{info.height}",
+                "-pix_fmt",
+                "rgb24",
+                "-f",
+                "rawvideo",
+                "-probesize",
+                "32",
+                "-thread_queue_size",
+                "10000",
+                "-i",
+                stream.resource_url(),
+                # Add audio source
+                "-i",
+                audio_input_path,
+                "-c:a",
+                "copy",
+                "-map",
+                "0:v:0",
+                "-map",
+                "1:a:0?",
+                # Output parameters
+                "-c:v",
+                "libx264",
+                "-preset",
+                "fast",
+                "-crf",
+                "18",
+                "-pix_fmt",
+                "yuv420p",
+                "-vf",
+                "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+                output_path,
+            ],
             pass_fds=stream.pass_fds(),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        try:
+        ):
             writer = stream.connect()
             bufwriter = io.BufferedWriter(writer)
             for frame in frames:
@@ -142,13 +124,25 @@ def write_frames(
                 bufwriter.write(frame.tobytes(order="C"))
             bufwriter.flush()
             stream.close()
-            proc.wait()
-        except:
+
+
+@contextmanager
+def run_silent(*args, **kwargs) -> Iterator[subprocess.Popen]:
+    proc = subprocess.Popen(
+        *args,
+        **kwargs,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        yield proc
+        proc.wait()
+        proc = None
+    finally:
+        if proc is not None:
             proc.kill()
             proc.wait()
-            raise
-    finally:
-        stream.close()
 
 
 def video_info(path: str) -> VideoInfo:

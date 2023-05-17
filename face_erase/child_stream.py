@@ -6,6 +6,7 @@ Ported from https://github.com/unixpickle/ffmpego/blob/6d92dd74560e18945db517a6b
 
 import socket
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from typing import BinaryIO, List
 
 
@@ -27,9 +28,13 @@ class ChildStream(ABC):
         pass
 
     @staticmethod
+    @contextmanager
     def create() -> "ChildStream":
-        # TODO: support pipes as well
-        return ChildSocketStream()
+        x = ChildSocketStream()
+        try:
+            yield x
+        finally:
+            x.close()
 
 
 class ChildSocketStream(ChildStream):
