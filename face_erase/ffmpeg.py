@@ -7,10 +7,10 @@ import re
 import subprocess
 from contextlib import contextmanager
 from dataclasses import dataclass
-from email.mime import audio
-from typing import Iterable, Iterator, Optional, Tuple
+from typing import Callable, Iterable, Iterator, Optional
 
 import numpy as np
+from tqdm.auto import tqdm
 
 from .child_stream import ChildStream
 
@@ -19,10 +19,44 @@ from .child_stream import ChildStream
 class VideoInfo:
     width: int
     height: int
-    fps: float
+    fps: Optional[float]
+
+    def with_fps(self, fps: float) -> "VideoInfo":
+        return VideoInfo(
+            width=self.width,
+            height=self.height,
+            fps=fps,
+        )
 
 
-def read_frames(path: str, info: Optional[VideoInfo] = None) -> Iterator[np.ndarray]:
+def map_frames(
+    input_path: str,
+    output_path: str,
+    fn: Callable[[np.ndarray], np.ndarray],
+    fallback_fps: float = 24.0,
+    progress: bool = False,
+):
+    """
+    Modify a video by applying the given function to each frame.
+    """
+    info = video_info(input_path)
+    frames = read_frames(
+        input_path, info=info, force_fps=None if info.fps else fallback_fps
+    )
+    it = (fn(x) for x in frames)
+    if progress:
+        it = tqdm(it)
+    write_frames(
+        output_path=output_path,
+        audio_input_path=input_path,
+        info=info if info.fps else info.with_fps(fallback_fps),
+        frames=it,
+    )
+
+
+def read_frames(
+    path: str, info: Optional[VideoInfo] = None, force_fps: Optional[float] = None
+) -> Iterator[np.ndarray]:
     """
     Read image frames from a video file using ffmpeg.
     """
@@ -40,6 +74,7 @@ def read_frames(path: str, info: Optional[VideoInfo] = None) -> Iterator[np.ndar
                 "rawvideo",
                 "-pix_fmt",
                 "rgb24",
+                *([] if not force_fps else ["-filter:v", f"fps=fps={force_fps:f}"]),
                 stream.resource_url(),
             ],
             pass_fds=stream.pass_fds(),
@@ -173,6 +208,4 @@ def video_info(path: str) -> VideoInfo:
             fps = float(match.group(1))
     if width is None:
         raise RuntimeError("could not infer size from ffmpeg output")
-    if fps is None:
-        raise RuntimeError("could not infer fps from ffmpeg output")
     return VideoInfo(width=width, height=height, fps=fps)
