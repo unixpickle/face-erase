@@ -108,7 +108,6 @@ class Detector:
         confidence: float,
         iou: float,
     ) -> List[List[Rect]]:
-        print(preds[0].shape)
         preds = non_max_suppression(
             preds, confidence, iou, agnostic=False, max_det=1000, classes=None, nc=1
         )
