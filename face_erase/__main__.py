@@ -13,8 +13,9 @@ from face_erase.ffmpeg import map_frames
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--blur-rate", type=float, default=0.25)
-    parser.add_argument("--blur-iterations", type=int, default=1000)
+    parser.add_argument("--blur-iterations", type=int, default=10)
+    parser.add_argument("--blur-kernel", type=int, default=13)
+    parser.add_argument("--blur-sigma", type=float, default=5.0)
     parser.add_argument("input")
     parser.add_argument("output")
     args = parser.parse_args()
@@ -57,7 +58,8 @@ def erase_fn(args: argparse.Namespace) -> Callable[[np.ndarray], np.ndarray]:
             image=img,
             mask=mask,
             iterations=args.blur_iterations,
-            rate=args.blur_rate,
+            kernel_size=args.blur_kernel,
+            sigma=args.blur_sigma,
         )
         return img_out.round().to(torch.uint8).permute(0, 2, 3, 1)[0].numpy()
 

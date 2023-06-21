@@ -5,8 +5,9 @@ import torch.nn.functional as F
 def adaptive_blur(
     image: torch.Tensor,
     mask: torch.Tensor,
-    iterations: int,
-    rate: float = 0.5,
+    iterations: int = 10,
+    kernel_size: int = 13,
+    sigma: float = 5.0,
 ) -> torch.Tensor:
     """
     :param image: an [N x C x H x W] image.
@@ -14,24 +15,38 @@ def adaptive_blur(
                  blurred.
     """
     assert iterations >= 1, "must apply at least one blurring iteration"
-    edge_rate = (1 - rate) / 4
-    kernel = (
-        torch.tensor(
-            [[0, edge_rate, 0], [edge_rate, rate, edge_rate], [0, edge_rate, 0]],
-            device=image.device,
-            dtype=image.dtype,
-        )
-        .view(1, 1, 3, 3)
-        .repeat(image.shape[1], 1, 1, 1)
-    )
+    assert kernel_size % 2 == 1, "kernel size must be odd"
+
+    in_dtype = image.dtype
+    image = image.float()
     mask = mask.float()
+
+    # Create a Gaussian blur kernel.
+    dists = torch.arange(
+        -(kernel_size // 2),
+        kernel_size // 2 + 1,
+        dtype=image.dtype,
+        device=image.device,
+    )
+    dists = dists[None, None, :, None] ** 2 + dists[None, None, None, :] ** 2
+    kernel = (-dists / (2 * sigma**2)).exp()
+    kernel /= kernel.sum()
+    kernel = kernel.repeat(3, 1, 1, 1)
+
+    # Not only apply blur repeatedly, but also expand the mask.
     for _ in range(iterations):
-        blurred = F.conv2d(
-            F.pad(image, (1, 1, 1, 1), mode="reflect"), kernel, groups=image.shape[1]
-        )
         mask_blurred = F.conv2d(
-            F.pad(mask, (1, 1, 1, 1), mode="reflect"), kernel, groups=mask.shape[1]
+            F.pad(mask, (kernel_size // 2,) * 4, mode="reflect"),
+            kernel,
+            groups=mask.shape[1],
+        )
+        mask = torch.minimum(mask, mask_blurred)
+
+        blurred = F.conv2d(
+            F.pad(image, (kernel_size // 2,) * 4, mode="reflect"),
+            kernel,
+            groups=image.shape[1],
         )
         image = mask * image + (1 - mask) * blurred
-        mask = torch.minimum(mask, mask_blurred)
-    return image
+
+    return image.to(in_dtype)
