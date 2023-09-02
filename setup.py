@@ -5,11 +5,18 @@ setup(
     packages=[
         "face_erase",
     ],
+    include_package_data=True,
+    package_data={
+        "face_erase": [
+            "binary/yolov8n-face-640x640.torchscript",
+        ],
+    },
     install_requires=[
         "Pillow",
         "torch",
         "torchvision",
         "tqdm",
     ],
-    author="OpenAI",
+    author="Alex Nichol",
+    version="0.1.0",
 )
